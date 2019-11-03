@@ -55,7 +55,7 @@ class CustomDataset(Dataset):
             anno = self.transform(anno)
 #             anno = anno_norm(anno)
     
-        anno[anno > 0] = 1      
+#         anno[anno > 0] = 1      
         sample = {"image": img, "annotation": anno}
         return sample
     
