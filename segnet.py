@@ -1,210 +1,116 @@
-# Reference https://github.com/delta-onera/delta_tb
-import os
-import urllib
-import torch
+# Reference https://github.com/trypag/pytorch-unet-segnet/blob/master/segnet.py
 import torch.nn as nn
 import torch.nn.functional as F
 
-import torch.utils.model_zoo as model_zoo
-from torchvision import models
-
 
 class SegNet(nn.Module):
-    # Unet network
-    @staticmethod
-    def weight_init(m):
-        if isinstance(m, nn.Linear):
-            torch.nn.init.kaiming_normal(m.weight.data)
-    
-    def __init__(self, in_channels, out_channels):
+    """SegNet: A Deep Convolutional Encoder-Decoder Architecture for
+    Image Segmentation. https://arxiv.org/abs/1511.00561
+    See https://github.com/alexgkendall/SegNet-Tutorial for original models.
+    Args:
+        num_classes (int): number of classes to segment
+        n_init_features (int): number of input features in the fist convolution
+        drop_rate (float): dropout rate of each encoder/decoder module
+        filter_config (list of 5 ints): number of output features at each level
+    """
+    def __init__(self, num_classes, n_init_features=1, drop_rate=0.5,
+                 filter_config=(64, 128, 256, 512, 512)):
         super(SegNet, self).__init__()
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
+        self.encoders = nn.ModuleList()
+        self.decoders = nn.ModuleList()
+        # setup number of conv-bn-relu blocks per module and number of filters
+        encoder_n_layers = (2, 2, 3, 3, 3)
+        encoder_filter_config = (n_init_features,) + filter_config
+        decoder_n_layers = (3, 3, 3, 2, 1)
+        decoder_filter_config = filter_config[::-1] + (filter_config[0],)
 
-        self.pool = nn.MaxPool2d(2, return_indices=True)
-        self.unpool = nn.MaxUnpool2d(2)
-        
-        self.conv1_1 = nn.Conv2d(in_channels, 64, 3, padding=1)
-        self.conv1_1_bn = nn.BatchNorm2d(64)
-        self.conv1_2 = nn.Conv2d(64, 64, 3, padding=1)
-        self.conv1_2_bn = nn.BatchNorm2d(64)
-        
-        self.conv2_1 = nn.Conv2d(64, 128, 3, padding=1)
-        self.conv2_1_bn = nn.BatchNorm2d(128)
-        self.conv2_2 = nn.Conv2d(128, 128, 3, padding=1)
-        self.conv2_2_bn = nn.BatchNorm2d(128)
-        
-        self.conv3_1 = nn.Conv2d(128, 256, 3, padding=1)
-        self.conv3_1_bn = nn.BatchNorm2d(256)
-        self.conv3_2 = nn.Conv2d(256, 256, 3, padding=1)
-        self.conv3_2_bn = nn.BatchNorm2d(256)
-        self.conv3_3 = nn.Conv2d(256, 256, 3, padding=1)
-        self.conv3_3_bn = nn.BatchNorm2d(256)
-        
-        self.conv4_1 = nn.Conv2d(256, 512, 3, padding=1)
-        self.conv4_1_bn = nn.BatchNorm2d(512)
-        self.conv4_2 = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv4_2_bn = nn.BatchNorm2d(512)
-        self.conv4_3 = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv4_3_bn = nn.BatchNorm2d(512)
-        
-        self.conv5_1 = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv5_1_bn = nn.BatchNorm2d(512)
-        self.conv5_2 = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv5_2_bn = nn.BatchNorm2d(512)
-        self.conv5_3 = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv5_3_bn = nn.BatchNorm2d(512)
-        
-        self.conv5_3_D = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv5_3_D_bn = nn.BatchNorm2d(512)
-        self.conv5_2_D = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv5_2_D_bn = nn.BatchNorm2d(512)
-        self.conv5_1_D = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv5_1_D_bn = nn.BatchNorm2d(512)
-        
-        self.conv4_3_D = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv4_3_D_bn = nn.BatchNorm2d(512)
-        self.conv4_2_D = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv4_2_D_bn = nn.BatchNorm2d(512)
-        self.conv4_1_D = nn.Conv2d(512, 256, 3, padding=1)
-        self.conv4_1_D_bn = nn.BatchNorm2d(256)
-        
-        self.conv3_3_D = nn.Conv2d(256, 256, 3, padding=1)
-        self.conv3_3_D_bn = nn.BatchNorm2d(256)
-        self.conv3_2_D = nn.Conv2d(256, 256, 3, padding=1)
-        self.conv3_2_D_bn = nn.BatchNorm2d(256)
-        self.conv3_1_D = nn.Conv2d(256, 128, 3, padding=1)
-        self.conv3_1_D_bn = nn.BatchNorm2d(128)
-        
-        self.conv2_2_D = nn.Conv2d(128, 128, 3, padding=1)
-        self.conv2_2_D_bn = nn.BatchNorm2d(128)
-        self.conv2_1_D = nn.Conv2d(128, 64, 3, padding=1)
-        self.conv2_1_D_bn = nn.BatchNorm2d(64)
-        
-        self.conv1_2_D = nn.Conv2d(64, 64, 3, padding=1)
-        self.conv1_2_D_bn = nn.BatchNorm2d(64)
-        self.conv1_1_D = nn.Conv2d(64, out_channels, 3, padding=1)
-        
-        self.apply(self.weight_init)
-        
+        for i in range(0, 5):
+            # encoder architecture
+            self.encoders.append(_Encoder(encoder_filter_config[i],
+                                          encoder_filter_config[i + 1],
+                                          encoder_n_layers[i], drop_rate))
+
+            # decoder architecture
+            self.decoders.append(_Decoder(decoder_filter_config[i],
+                                          decoder_filter_config[i + 1],
+                                          decoder_n_layers[i], drop_rate))
+
+        # final classifier (equivalent to a fully connected layer)
+        self.classifier = nn.Conv2d(filter_config[0], num_classes, 3, 1, 1)
+
     def forward(self, x):
-        # Encoder block 1
-        x = F.relu(self.conv1_1_bn(self.conv1_1(x)))
-        x1 = F.relu(self.conv1_2_bn(self.conv1_2(x)))
-        size1 = x.size()
-        x, mask1 = self.pool(x1)
-        
-        # Encoder block 2
-        x = F.relu(self.conv2_1_bn(self.conv2_1(x)))
-        x2 = F.relu(self.conv2_2_bn(self.conv2_2(x)))
-        size2 = x.size()
-        x, mask2 = self.pool(x2)
-        
-        # Encoder block 3
-        x = F.relu(self.conv3_1_bn(self.conv3_1(x)))
-        x = F.relu(self.conv3_2_bn(self.conv3_2(x)))
-        x3 = F.relu(self.conv3_3_bn(self.conv3_3(x)))
-        size3 = x.size()
-        x, mask3 = self.pool(x3)
-        
-        # Encoder block 4
-        x = F.relu(self.conv4_1_bn(self.conv4_1(x)))
-        x = F.relu(self.conv4_2_bn(self.conv4_2(x)))
-        x4 = F.relu(self.conv4_3_bn(self.conv4_3(x)))
-        size4 = x.size()
-        x, mask4 = self.pool(x4)
-        
-        # Encoder block 5
-        x = F.relu(self.conv5_1_bn(self.conv5_1(x)))
-        x = F.relu(self.conv5_2_bn(self.conv5_2(x)))
-        x = F.relu(self.conv5_3_bn(self.conv5_3(x)))
-        size5 = x.size()
-        x, mask5 = self.pool(x)
-        
-        # Decoder block 5
-        x = self.unpool(x, mask5, output_size = size5)
-        x = F.relu(self.conv5_3_D_bn(self.conv5_3_D(x)))
-        x = F.relu(self.conv5_2_D_bn(self.conv5_2_D(x)))
-        x = F.relu(self.conv5_1_D_bn(self.conv5_1_D(x)))
-        
-        # Decoder block 4
-        x = self.unpool(x, mask4, output_size = size4)
-        x = F.relu(self.conv4_3_D_bn(self.conv4_3_D(x)))
-        x = F.relu(self.conv4_2_D_bn(self.conv4_2_D(x)))
-        x = F.relu(self.conv4_1_D_bn(self.conv4_1_D(x)))
-        
-        # Decoder block 3
-        x = self.unpool(x, mask3, output_size = size3)
-        x = F.relu(self.conv3_3_D_bn(self.conv3_3_D(x)))
-        x = F.relu(self.conv3_2_D_bn(self.conv3_2_D(x)))
-        x = F.relu(self.conv3_1_D_bn(self.conv3_1_D(x)))
-        
-        # Decoder block 2
-        x = self.unpool(x, mask2, output_size = size2)
-        x = F.relu(self.conv2_2_D_bn(self.conv2_2_D(x)))
-        x = F.relu(self.conv2_1_D_bn(self.conv2_1_D(x)))
-        
-        # Decoder block 1
-        x = self.unpool(x, mask1, output_size = size1)
-        x = F.relu(self.conv1_2_D_bn(self.conv1_2_D(x)))
-        x = self.conv1_1_D(x)
-        return x
+        indices = []
+        unpool_sizes = []
+        feat = x
 
-    def load_pretrained_weights(self):
+        # encoder path, keep track of pooling indices and features size
+        for i in range(0, 5):
+            (feat, ind), size = self.encoders[i](feat)
+            indices.append(ind)
+            unpool_sizes.append(size)
 
-        vgg16_weights = model_zoo.load_url("https://download.pytorch.org/models/vgg16_bn-6c64b313.pth")
+        # decoder path, upsampling with corresponding indices and size
+        for i in range(0, 5):
+            feat = self.decoders[i](feat, indices[4 - i], unpool_sizes[4 - i])
 
-        count_vgg = 0
-        count_this = 0
-
-        vggkeys = list(vgg16_weights.keys())
-        thiskeys  = list(self.state_dict().keys())
-
-        corresp_map = []
-
-        while(True):
-            vggkey = vggkeys[count_vgg]
-            thiskey = thiskeys[count_this]
-
-            if "classifier" in vggkey:
-                break
-            
-            while vggkey.split(".")[-1] not in thiskey:
-                count_this += 1
-                thiskey = thiskeys[count_this]
+        return self.classifier(feat)
 
 
-            corresp_map.append([vggkey, thiskey])
-            count_vgg+=1
-            count_this += 1
+class _Encoder(nn.Module):
+    def __init__(self, n_in_feat, n_out_feat, n_blocks=2, drop_rate=0.5):
+        """Encoder layer follows VGG rules + keeps pooling indices
+        Args:
+            n_in_feat (int): number of input features
+            n_out_feat (int): number of output features
+            n_blocks (int): number of conv-batch-relu block inside the encoder
+            drop_rate (float): dropout rate to use
+        """
+        super(_Encoder, self).__init__()
 
-        mapped_weights = self.state_dict()
-        for k_vgg, k_segnet in corresp_map:
-            if (self.in_channels != 3) and "features" in k_vgg and "conv1_1." not in k_segnet:
-                mapped_weights[k_segnet] = vgg16_weights[k_vgg]
-            elif (self.in_channels == 3) and "features" in k_vgg:
-                mapped_weights[k_segnet] = vgg16_weights[k_vgg]
+        layers = [nn.Conv2d(n_in_feat, n_out_feat, 3, 1, 1),
+                  nn.BatchNorm2d(n_out_feat),
+                  nn.ReLU(inplace=True)]
 
-        try:
-            self.load_state_dict(mapped_weights)
-            print("Loaded VGG-16 weights in Segnet !")
-        except:
-            print("Error VGG-16 weights in Segnet !")
-            raise
-    
-    def load_from_filename(self, model_path):
-        """Load weights from filename."""
-        th = torch.load(model_path)  # load the weigths
-        self.load_state_dict(th)
+        if n_blocks > 1:
+            layers += [nn.Conv2d(n_out_feat, n_out_feat, 3, 1, 1),
+                       nn.BatchNorm2d(n_out_feat),
+                       nn.ReLU(inplace=True)]
+            if n_blocks == 3:
+                layers += [nn.Dropout(drop_rate)]
+
+        self.features = nn.Sequential(*layers)
+
+    def forward(self, x):
+        output = self.features(x)
+        return F.max_pool2d(output, 2, 2, return_indices=True), output.size()
 
 
-def segnet(in_channels, out_channels, pretrained=False, **kwargs):
-    """Constructs a ResNet-34 model.
+class _Decoder(nn.Module):
+    """Decoder layer decodes the features by unpooling with respect to
+    the pooling indices of the corresponding decoder part.
     Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        n_in_feat (int): number of input features
+        n_out_feat (int): number of output features
+        n_blocks (int): number of conv-batch-relu block inside the decoder
+        drop_rate (float): dropout rate to use
     """
-    model = SegNet(in_channels, out_channels)
-    if pretrained:
-        model.load_pretrained_weights()
-    return model
+    def __init__(self, n_in_feat, n_out_feat, n_blocks=2, drop_rate=0.5):
+        super(_Decoder, self).__init__()
+
+        layers = [nn.Conv2d(n_in_feat, n_in_feat, 3, 1, 1),
+                  nn.BatchNorm2d(n_in_feat),
+                  nn.ReLU(inplace=True)]
+
+        if n_blocks > 1:
+            layers += [nn.Conv2d(n_in_feat, n_out_feat, 3, 1, 1),
+                       nn.BatchNorm2d(n_out_feat),
+                       nn.ReLU(inplace=True)]
+            if n_blocks == 3:
+                layers += [nn.Dropout(drop_rate)]
+
+        self.features = nn.Sequential(*layers)
+
+    def forward(self, x, indices, size):
+        unpooled = F.max_unpool2d(x, indices, 2, 2, 0, size)
+        return self.features(unpooled)
