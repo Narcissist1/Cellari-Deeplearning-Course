@@ -6,7 +6,7 @@ The dataset can be found [here](https://warwick.ac.uk/fac/sci/dcs/research/tia/g
 
 reproduce the model
 
-##1 stage
+## 1 stage
 
 200 epochs image size (128, 128) learning rate 1e-4 batch size 50
 
