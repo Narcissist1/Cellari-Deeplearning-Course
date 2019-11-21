@@ -1,7 +1,32 @@
 # Cellari-Deeplearning-Course
-Repository for the Cellari project in the Deep Learning Course at DTU
 
-In order to download and crop the drone image, open your terminal and type python3 drone_data.py in the folder that hosts this script.
-The images will be downloaded to the folder.
+Our network is based on Segnet. The task is to segment malicious cell from medical images.
 
-The batch generator is an example and should be expanded by you.
+The dataset can be found [here](https://warwick.ac.uk/fac/sci/dcs/research/tia/glascontest/download/https://warwick.ac.uk/fac/sci/dcs/research/tia/glascontest/download/)
+
+reproduce the model
+
+##1 stage
+
+200 epochs image size (128, 128) learning rate 1e-4 batch size 50
+
+accuracy on test data 0.77
+
+## 2 stage
+
+200 epochs image size (192, 192) learning rate 5e-5 batch size 5
+
+accuracy on test data 0.84
+
+## 3 stage
+
+200 epochs image size (256, 256) learning rate 5e-5 batch size 5
+
+accuracy on test data 0.86
+
+## 4 stage
+
+200 epochs image size (256, 256) learning rate 1e-5 batch size 5
+
+accuracy on test data 0.87
+
