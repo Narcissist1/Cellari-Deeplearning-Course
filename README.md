@@ -14,19 +14,14 @@ accuracy on test data 0.77
 
 ## 2 stage
 
-200 epochs image size (192, 192) learning rate 5e-5 batch size 5
+200 epochs image size (128, 128) learning rate 5e-5 batch size 5
 
 accuracy on test data 0.84
 
 ## 3 stage
 
-200 epochs image size (256, 256) learning rate 5e-5 batch size 5
+200 epochs image size (192, 192) learning rate 5e-5 batch size 5
 
-accuracy on test data 0.86
+accuracy on test data 0.896
 
-## 4 stage
-
-200 epochs image size (256, 256) learning rate 1e-5 batch size 5
-
-accuracy on test data 0.87
 
